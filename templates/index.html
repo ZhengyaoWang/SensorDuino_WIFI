@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Sensor Monitoring</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin: 10px 0;
+        }
+
+        .container {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            width: 90%;
+            max-width: 1200px;
+            gap: 10px;
+        }
+
+        .alarm {
+            background-color: #ffebee;
+            border: 1px solid #f44336;
+            color: #f44336;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            display: none;
+            font-size: 0.9em;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .card {
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            text-align: center;
+            transition: transform 0.2s;
+            font-size: 0.9em;
+        }
+
+        .card-title {
+            font-size: 1em;
+            color: #555;
+            margin-bottom: 5px;
+        }
+
+        .card-value {
+            font-size: 1.2em;
+            color: #333;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 200px;
+        }
+
+        .alarm-card {
+            background-color: #ffcccc;
+            border-color: #ff0000;
+            color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <h1>Real-Time Sensor Data Monitor</h1>
+
+    <div class="container">
+        <div id="alarm" class="alarm"></div>
+
+        <div class="dashboard">
+            <!-- Sensor Cards -->
+            <div class="card"><div class="card-title">Temperature</div><div class="card-value" id="temperature">0 °C</div></div>
+            <div class="card"><div class="card-title">Humidity</div><div class="card-value" id="humidity">0 %</div></div>
+            <div class="card"><div class="card-title">Pressure</div><div class="card-value" id="pressure">0 kPa</div></div>
+            <div class="card"><div class="card-title">Light</div><div class="card-value" id="light">0 Lux</div></div>
+            <div class="card"><div class="card-title">TVOC</div><div class="card-value" id="tvoc">0 mg/m³</div></div>
+            <div class="card"><div class="card-title">Smoke</div><div class="card-value" id="smoke">0 %</div></div>
+
+            <!-- Chart Containers -->
+            <div class="chart-container"><canvas id="temperatureChart"></canvas></div>
+            <div class="chart-container"><canvas id="humidityChart"></canvas></div>
+            <div class="chart-container"><canvas id="pressureChart"></canvas></div>
+            <div class="chart-container"><canvas id="lightChart"></canvas></div>
+            <div class="chart-container"><canvas id="tvocChart"></canvas></div>
+            <div class="chart-container"><canvas id="smokeChart"></canvas></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Charts configuration
+    const createChart = (ctx, label) => new Chart(ctx, {
+        type: 'line',
+        data: { labels: Array(10).fill(''), datasets: [{ label, data: Array(10).fill(0), borderWidth: 2, fill: false }] },
+        options: { scales: { x: {
+                beginAtZero: true,
+                title: { display: false, text: 'time' } // Add x-axis label here
+            },
+            y: {
+                beginAtZero: true
+            } }, responsive: true, maintainAspectRatio: false }
+    });
+
+    // Initialize charts
+    const charts = {
+        temperature: createChart(document.getElementById('temperatureChart').getContext('2d'), 'Temperature (°C)'),
+        humidity: createChart(document.getElementById('humidityChart').getContext('2d'), 'Humidity (%)'),
+        pressure: createChart(document.getElementById('pressureChart').getContext('2d'), 'Pressure (kPa)'),
+        light: createChart(document.getElementById('lightChart').getContext('2d'), 'Light (Lux)'),
+        tvoc: createChart(document.getElementById('tvocChart').getContext('2d'), 'TVOC (mg/m³)'),
+        smoke: createChart(document.getElementById('smokeChart').getContext('2d'), 'Smoke (%)')
+    };
+
+    // Update the charts with new values
+    const updateChart = (chart, value) => {
+        chart.data.datasets[0].data.push(value);  // Add new value
+        chart.data.datasets[0].data.shift();  // Remove the oldest value to keep data length constant
+        chart.update();
+    };
+
+    // Helper function to set card color based on alarm condition
+    const setCardAlarm = (elementId, condition) => {
+        const card = document.getElementById(elementId).parentElement;
+        if (condition) {
+            card.classList.add('alarm-card');
+        } else {
+            card.classList.remove('alarm-card');
+        }
+    };
+
+    // Function to fetch latest sensor data from the server
+    const fetchLatestData = () => {
+        fetch('/get_latest_data')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error(data.error);
+                    return;
+                }
+
+                console.log("Fetched sensor data:", data);  // Log received data for debugging
+
+                // Update the card values
+                document.getElementById('temperature').innerText = data.temperature + " °C";
+                document.getElementById('humidity').innerText = data.humidity + " %";
+                document.getElementById('pressure').innerText = data.pressure + " kPa";
+                document.getElementById('light').innerText = data.light + " Lux";
+                document.getElementById('tvoc').innerText = data.tvoc + " mg/m³";
+                document.getElementById('smoke').innerText = data.smoke + " %";
+
+                // Update charts with new data
+                updateChart(charts.temperature, data.temperature);
+                updateChart(charts.humidity, data.humidity);
+                updateChart(charts.pressure, data.pressure);
+                updateChart(charts.light, data.light);
+                updateChart(charts.tvoc, data.tvoc);
+                updateChart(charts.smoke, data.smoke);
+
+                // Alarm messages for visual warnings
+                const alarmElement = document.getElementById('alarm');
+                let alarmMessage = '';
+
+                setCardAlarm('temperature', data.temperature < 10 || data.temperature > 30);
+                setCardAlarm('humidity', data.humidity < 30);
+                setCardAlarm('pressure', data.pressure < 100);
+                setCardAlarm('tvoc', data.tvoc > 0.1);
+                setCardAlarm('smoke', data.smoke > 50);
+
+                if (data.temperature < 10 || data.temperature > 30) {
+                    alarmMessage += `Temperature out of range! (${data.temperature} °C)\n`;
+                }
+                if (data.humidity < 30) {
+                    alarmMessage += `Humidity too low! (${data.humidity} %)\n`;
+                }
+                if (data.pressure < 100) {
+                    alarmMessage += `Pressure too low! (${data.pressure} kPa)\n`;
+                }
+                if (data.tvoc > 0.1) {
+                    alarmMessage += `TVOC level too high! (${data.tvoc} mg/m³)\n`;
+                }
+                if (data.smoke > 50) {
+                    alarmMessage += `Smoke level too high! (${data.smoke} %)\n`;
+                }
+
+                if (alarmMessage) {
+                    alarmElement.innerText = alarmMessage;
+                    alarmElement.style.display = 'block';  // Show alarm
+                } else {
+                    alarmElement.style.display = 'none';  // Hide alarm if no condition is met
+                }
+            })
+            .catch(error => console.error('Error fetching latest data:', error));
+    };
+
+    // Fetch the latest data every 2 seconds
+    setInterval(fetchLatestData, 2000);
+</script>
+
+</body>
+</html>
