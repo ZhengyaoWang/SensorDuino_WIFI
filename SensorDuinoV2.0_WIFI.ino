@@ -1,6 +1,6 @@
 //This is a Function Demonstration Program for SensorDuinoV2.0 
 //Board and Program Designed and Tested by Zhengyao William Wang
-//2024/03/13 Version 1.01
+//2024/11/01 Version 1.02
 
 #include "SensorDuinoV2.h"
 #include "alert.h" // Out of range alert icon
